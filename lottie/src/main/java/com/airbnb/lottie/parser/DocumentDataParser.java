@@ -4,6 +4,7 @@ import android.util.JsonReader;
 
 import com.airbnb.lottie.model.DocumentData;
 
+import com.airbnb.lottie.model.DocumentData.Justification;
 import java.io.IOException;
 
 public class DocumentDataParser implements ValueParser<DocumentData> {
@@ -15,13 +16,13 @@ public class DocumentDataParser implements ValueParser<DocumentData> {
     String text = null;
     String fontName = null;
     double size = 0;
-    int justification = 0;
+    Justification justification = Justification.CENTER;
     int tracking = 0;
     double lineHeight = 0;
     double baselineShift = 0;
     int fillColor = 0;
     int strokeColor = 0;
-    int strokeWidth = 0;
+    double strokeWidth = 0;
     boolean strokeOverFill = true;
 
     reader.beginObject();
@@ -37,7 +38,12 @@ public class DocumentDataParser implements ValueParser<DocumentData> {
           size = reader.nextDouble();
           break;
         case "j":
-          justification = reader.nextInt();
+          int justificationInt = reader.nextInt();
+          if (justificationInt > Justification.CENTER.ordinal() || justificationInt < 0) {
+            justification = Justification.CENTER;
+          } else {
+            justification = Justification.values()[justificationInt];
+          }
           break;
         case "tr":
           tracking = reader.nextInt();
@@ -55,7 +61,7 @@ public class DocumentDataParser implements ValueParser<DocumentData> {
           strokeColor = JsonUtils.jsonToColor(reader);
           break;
         case "sw":
-          strokeWidth = reader.nextInt();
+          strokeWidth = reader.nextDouble();
           break;
         case "of":
           strokeOverFill = reader.nextBoolean();

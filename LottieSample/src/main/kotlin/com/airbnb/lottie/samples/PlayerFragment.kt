@@ -2,33 +2,41 @@ package com.airbnb.lottie.samples
 
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
-import android.arch.lifecycle.Lifecycle
-import android.arch.lifecycle.Observer
-import android.arch.lifecycle.ViewModelProviders
+import android.app.AlertDialog
 import android.graphics.Color
 import android.os.Bundle
-import android.support.design.widget.BottomSheetBehavior
-import android.support.design.widget.Snackbar
-import android.support.transition.AutoTransition
-import android.support.transition.TransitionManager
-import android.support.v4.app.Fragment
-import android.support.v4.content.ContextCompat
-import android.support.v7.app.AppCompatActivity
+import android.util.Log
 import android.view.*
-import androidx.view.children
-import androidx.view.isVisible
+import android.widget.EditText
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.view.children
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.transition.AutoTransition
+import androidx.transition.TransitionManager
 import com.airbnb.lottie.L
+import com.airbnb.lottie.LottieAnimationView
 import com.airbnb.lottie.LottieComposition
-import com.airbnb.lottie.OnCompositionLoadedListener
+import com.airbnb.lottie.RenderMode
+import com.airbnb.lottie.model.KeyPath
 import com.airbnb.lottie.samples.model.CompositionArgs
 import com.airbnb.lottie.samples.views.BackgroundColorView
 import com.airbnb.lottie.samples.views.BottomSheetItemView
+import com.airbnb.lottie.samples.views.BottomSheetItemViewModel_
 import com.airbnb.lottie.samples.views.ControlBarItemToggleView
+import com.airbnb.mvrx.BaseMvRxFragment
+import com.airbnb.mvrx.fragmentViewModel
+import com.airbnb.mvrx.withState
 import com.github.mikephil.charting.components.LimitLine
 import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.snackbar.Snackbar
+import kotlinx.android.synthetic.main.bottom_sheet_key_paths.*
 import kotlinx.android.synthetic.main.bottom_sheet_render_times.*
 import kotlinx.android.synthetic.main.bottom_sheet_warnings.*
 import kotlinx.android.synthetic.main.control_bar.*
@@ -36,32 +44,14 @@ import kotlinx.android.synthetic.main.control_bar_background_color.*
 import kotlinx.android.synthetic.main.control_bar_player_controls.*
 import kotlinx.android.synthetic.main.control_bar_scale.*
 import kotlinx.android.synthetic.main.control_bar_speed.*
+import kotlinx.android.synthetic.main.control_bar_trim.*
 import kotlinx.android.synthetic.main.fragment_player.*
-import kotlin.math.max
 import kotlin.math.min
-import kotlin.properties.ObservableProperty
-import kotlin.reflect.KProperty
+import kotlin.math.roundToInt
 
-private class UiState(private val callback: () -> Unit) {
-
-    private inner class BooleanProperty(initialValue: Boolean) : ObservableProperty<Boolean>(initialValue) {
-        override fun afterChange(property: KProperty<*>, oldValue: Boolean, newValue: Boolean) {
-            callback()
-        }
-    }
-
-    var controls by BooleanProperty(true)
-    var controlBar by BooleanProperty(true)
-    var renderGraph by BooleanProperty(false)
-    var border by BooleanProperty(false)
-    var backgroundColor by BooleanProperty(false)
-    var scale by BooleanProperty(false)
-    var speed by BooleanProperty(false)
-}
-class PlayerFragment : Fragment(), OnCompositionLoadedListener {
+class PlayerFragment : BaseMvRxFragment() {
 
     private val transition = AutoTransition().apply { duration = 175 }
-    private val uiState = UiState { updateUiFromState() }
     private val renderTimesBehavior by lazy {
         BottomSheetBehavior.from(renderTimesBottomSheet).apply {
             peekHeight = resources.getDimensionPixelSize(R.dimen.bottom_bar_peek_height)
@@ -69,6 +59,11 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
     }
     private val warningsBehavior by lazy {
         BottomSheetBehavior.from(warningsBottomSheet).apply {
+            peekHeight = resources.getDimensionPixelSize(R.dimen.bottom_bar_peek_height)
+        }
+    }
+    private val keyPathsBehavior by lazy {
+        BottomSheetBehavior.from(keyPathsBottomSheet).apply {
             peekHeight = resources.getDimensionPixelSize(R.dimen.bottom_bar_peek_height)
         }
     }
@@ -83,10 +78,6 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
             color = Color.BLACK
         }
     }
-    private var composition: LottieComposition? = null
-
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
-            inflater.inflate(R.layout.fragment_player, container, false)
 
     private val animatorListener = AnimatorListenerAdapter(
             onStart = { playButton.isActivated = true },
@@ -94,20 +85,20 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
                 playButton.isActivated = false
                 animationView.performanceTracker?.logRenderTimes()
                 updateRenderTimesPerLayer()
-                updateWarnings()
             },
             onCancel = {
                 playButton.isActivated = false
-                updateWarnings()
             },
             onRepeat = {
                 animationView.performanceTracker?.logRenderTimes()
                 updateRenderTimesPerLayer()
-                updateWarnings()
             }
     )
 
-    private val viewModel by lazy { ViewModelProviders.of(this).get(PlayerViewModel::class.java) }
+    private val viewModel: PlayerViewModel by fragmentViewModel()
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+            inflater.inflate(R.layout.fragment_player, container, false)
 
     @SuppressLint("SetTextI18n")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -118,86 +109,170 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
 
         L.setTraceEnabled(true)
 
-        val args = arguments?.getParcelable<CompositionArgs>(EXTRA_ANIMATION_ARGS) ?: throw IllegalArgumentException("No composition args specified")
+        lottieVersionView.text = getString(R.string.lottie_version, com.airbnb.lottie.BuildConfig.VERSION_NAME)
+
+        val args = arguments?.getParcelable<CompositionArgs>(EXTRA_ANIMATION_ARGS)
+                ?: throw IllegalArgumentException("No composition args specified")
         args.animationData?.bgColorInt()?.let {
             backgroundButton1.setBackgroundColor(it)
             animationContainer.setBackgroundColor(it)
+            invertColor(it)
         }
 
-        viewModel.composition.observe(this, Observer {
+        minFrameView.setOnClickListener { showMinFrameDialog() }
+        maxFrameView.setOnClickListener { showMaxFrameDialog() }
+        viewModel.selectSubscribe(PlayerState::minFrame, PlayerState::maxFrame) { minFrame, maxFrame ->
+            animationView.setMinAndMaxFrame(minFrame, maxFrame)
+            // I think this is a lint bug. It complains about int being <ErrorType>
+            //noinspection StringFormatMatches
+            minFrameView.setText(resources.getString(R.string.min_frame, animationView.minFrame.toInt()))
+            //noinspection StringFormatMatches
+            maxFrameView.setText(resources.getString(R.string.max_frame, animationView.maxFrame.toInt()))
+        }
+
+        viewModel.fetchAnimation(args)
+        viewModel.asyncSubscribe(PlayerState::composition, onFail = {
+            Snackbar.make(coordinatorLayout, R.string.composition_load_error, Snackbar.LENGTH_LONG).show()
+            Log.w(L.TAG, "Error loading composition.", it)
+        }) {
             loadingView.isVisible = false
             onCompositionLoaded(it)
-        })
-        viewModel.error.observe(this, Observer {
-            Snackbar.make(coordinatorLayout, R.string.composition_load_error, Snackbar.LENGTH_LONG)
-        })
-        viewModel.fetchAnimation(args)
+        }
 
-        borderToggle.setOnClickListener { uiState.border++ }
-        backgroundColorToggle.setOnClickListener { uiState.backgroundColor++ }
-        scaleToggle.setOnClickListener { uiState.scale++ }
-        speedToggle.setOnClickListener { uiState.speed++ }
-        renderGraphToggle.setOnClickListener { uiState.renderGraph++ }
-
-        closeBackgroundColorButton.setOnClickListener { uiState.backgroundColor = false }
-        closeScaleButton.setOnClickListener { uiState.scale = false }
-        closeSpeedButton.setOnClickListener { uiState.speed = false }
+        borderToggle.setOnClickListener { viewModel.toggleBorderVisible() }
+        viewModel.selectSubscribe(PlayerState::borderVisible) {
+            borderToggle.isActivated = it
+            borderToggle.setImageResource(
+                    if (it) R.drawable.ic_border_on
+                    else R.drawable.ic_border_off
+            )
+            animationView.setBackgroundResource(if (it) R.drawable.outline else 0)
+        }
 
         hardwareAccelerationToggle.setOnClickListener {
-            animationView.useHardwareAcceleration(!animationView.useHardwareAcceleration)
-            updateUiFromState()
+            val renderMode = if (animationView.layerType == View.LAYER_TYPE_HARDWARE) {
+                RenderMode.SOFTWARE
+            } else {
+                RenderMode.HARDWARE
+            }
+            animationView.setRenderMode(renderMode)
+            hardwareAccelerationToggle.isActivated = animationView.layerType == View.LAYER_TYPE_HARDWARE
         }
 
-        mergePathsToggle.setOnClickListener {
-            animationView.enableMergePathsForKitKatAndAbove(!animationView.isMergePathsEnabledForKitKatAndAbove)
-            updateUiFromState()
+        viewModel.selectSubscribe(PlayerState::controlsVisible) { controlsContainer.animateVisible(it) }
+
+        viewModel.selectSubscribe(PlayerState::controlBarVisible) { controlBar.animateVisible(it) }
+
+        renderGraphToggle.setOnClickListener { viewModel.toggleRenderGraphVisible() }
+        viewModel.selectSubscribe(PlayerState::renderGraphVisible) {
+            renderGraphToggle.isActivated = it
+            renderTimesGraphContainer.animateVisible(it)
+            renderTimesPerLayerButton.animateVisible(it)
+            lottieVersionView.animateVisible(!it)
         }
+
+        backgroundColorToggle.setOnClickListener { viewModel.toggleBackgroundColorVisible() }
+        closeBackgroundColorButton.setOnClickListener { viewModel.setBackgroundColorVisible(false) }
+        viewModel.selectSubscribe(PlayerState::backgroundColorVisible) {
+            backgroundColorToggle.isActivated = it
+            backgroundColorContainer.animateVisible(it)
+        }
+
+        scaleToggle.setOnClickListener { viewModel.toggleScaleVisible() }
+        closeScaleButton.setOnClickListener { viewModel.setScaleVisible(false) }
+        viewModel.selectSubscribe(PlayerState::scaleVisible) {
+            scaleToggle.isActivated = it
+            scaleContainer.animateVisible(it)
+        }
+
+        trimToggle.setOnClickListener { viewModel.toggleTrimVisible() }
+        closeTrimButton.setOnClickListener { viewModel.setTrimVisible(false) }
+        viewModel.selectSubscribe(PlayerState::trimVisible) {
+            trimToggle.isActivated = it
+            trimContainer.animateVisible(it)
+        }
+
+        mergePathsToggle.setOnClickListener { viewModel.toggleMergePaths() }
+        viewModel.selectSubscribe(PlayerState::useMergePaths) {
+            animationView.enableMergePathsForKitKatAndAbove(it)
+            mergePathsToggle.isActivated = it
+        }
+
+        speedToggle.setOnClickListener { viewModel.toggleSpeedVisible() }
+        closeSpeedButton.setOnClickListener { viewModel.setSpeedVisible(false) }
+        viewModel.selectSubscribe(PlayerState::speedVisible) {
+            speedToggle.isActivated = it
+            speedContainer.isVisible = it
+        }
+        viewModel.selectSubscribe(PlayerState::speed) {
+            animationView.speed = it
+            speedButtonsContainer
+                    .children
+                    .filterIsInstance<ControlBarItemToggleView>()
+                    .forEach { toggleView ->
+                        toggleView.isActivated = toggleView.getText().replace("x", "").toFloat() == animationView.speed
+                    }
+        }
+        speedButtonsContainer
+                .children
+                .filterIsInstance(ControlBarItemToggleView::class.java)
+                .forEach { child ->
+                    child.setOnClickListener {
+                        val speed = (it as ControlBarItemToggleView)
+                                .getText()
+                                .replace("x", "")
+                                .toFloat()
+                        viewModel.setSpeed(speed)
+                    }
+                }
+
+
+        loopButton.setOnClickListener { viewModel.toggleLoop() }
+        viewModel.selectSubscribe(PlayerState::repeatCount) {
+            animationView.repeatCount = it
+            loopButton.isActivated = animationView.repeatCount == ValueAnimator.INFINITE
+        }
+
+        playButton.isActivated = animationView.isAnimating
 
         seekBar.setOnSeekBarChangeListener(OnSeekBarChangeListenerAdapter(
                 onProgressChanged = { _, progress, _ ->
-                    if (seekBar.isPressed && progress > 0 && progress < 5) {
+                    if (seekBar.isPressed && progress in 1..4) {
                         seekBar.progress = 0
                         return@OnSeekBarChangeListenerAdapter
                     }
-                    currentFrameView.text = animationView.frame.toString()
                     if (animationView.isAnimating) return@OnSeekBarChangeListenerAdapter
                     animationView.progress = progress / seekBar.max.toFloat()
                 }
         ))
 
-        animationView.repeatCount = ValueAnimator.INFINITE
         animationView.addAnimatorUpdateListener {
+            currentFrameView.text = updateFramesAndDurationLabel(animationView)
+
             if (seekBar.isPressed) return@addAnimatorUpdateListener
-            seekBar.progress = ((it.animatedValue as Float) * seekBar.max).toInt()
+            seekBar.progress = ((it.animatedValue as Float) * seekBar.max).roundToInt()
         }
         animationView.addAnimatorListener(animatorListener)
         playButton.setOnClickListener {
             if (animationView.isAnimating) animationView.pauseAnimation() else animationView.resumeAnimation()
-            updateUiFromState()
+            playButton.isActivated = animationView.isAnimating
+            postInvalidate()
         }
 
-        loopButton.setOnClickListener {
-            val repeatCount = if (animationView.repeatCount == ValueAnimator.INFINITE) 0 else ValueAnimator.INFINITE
-            animationView.repeatCount = repeatCount
-            updateUiFromState()
+        animationView.setOnClickListener {
+            // Click the animation view to re-render it for debugging purposes.
+            animationView.invalidate()
         }
 
         scaleSeekBar.setOnSeekBarChangeListener(OnSeekBarChangeListenerAdapter(
                 onProgressChanged = { _, progress, _ ->
-                    val minScale = 0.15f
-                    val screenWidth = resources.displayMetrics.widthPixels.toFloat()
-                    val screenHeight = resources.displayMetrics.heightPixels.toFloat()
-                    val maxScale = max(min(
-                            screenWidth / (composition?.bounds?.width()?.toFloat() ?: screenWidth),
-                            screenHeight / (composition?.bounds?.height()?.toFloat() ?: screenHeight)
-                    ), minScale)
+                    val minScale = minScale()
+                    val maxScale = maxScale()
                     val scale = minScale + progress / 100f * (maxScale - minScale)
                     animationView.scale = scale
                     scaleText.text = "%.0f%%".format(scale * 100)
                 }
         ))
-        // This maps to a scale of 1
-        scaleSeekBar.progress = 46
 
         arrayOf<BackgroundColorView>(
                 backgroundButton1,
@@ -207,7 +282,10 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
                 backgroundButton5,
                 backgroundButton6
         ).forEach { bb ->
-            bb.setOnClickListener { animationContainer.setBackgroundColor(bb.getColor()) }
+            bb.setOnClickListener {
+                animationContainer.setBackgroundColor(bb.getColor())
+                invertColor(bb.getColor())
+            }
         }
 
         renderTimesGraph.apply {
@@ -234,15 +312,6 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
             axisLeft.addLimitLine(ll2)
         }
 
-        speedButtonsContainer.children.forEach {
-            it.setOnClickListener {
-                if (it is ControlBarItemToggleView) {
-                    animationView.speed = it.getText().replace("x", "").toFloat()
-                    updateUiFromState()
-                }
-            }
-        }
-
         renderTimesPerLayerButton.setOnClickListener {
             updateRenderTimesPerLayer()
             renderTimesBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
@@ -254,9 +323,11 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
         renderTimesBehavior.state = BottomSheetBehavior.STATE_HIDDEN
 
         warningsButton.setOnClickListener {
-            updateWarnings()
-            if (composition?.warnings?.isEmpty() != true) {
-                warningsBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
+            withState(viewModel) { state ->
+                if (state.composition()?.warnings?.isEmpty() != true) {
+                    warningsBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
+
+                }
             }
         }
 
@@ -265,7 +336,56 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
         }
         warningsBehavior.state = BottomSheetBehavior.STATE_HIDDEN
 
-        updateUiFromState()
+        keyPathsToggle.setOnClickListener {
+            keyPathsBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
+        }
+
+        closeKeyPathsBottomSheetButton.setOnClickListener {
+            keyPathsBehavior.state = BottomSheetBehavior.STATE_HIDDEN
+        }
+        keyPathsBehavior.state = BottomSheetBehavior.STATE_HIDDEN
+    }
+
+    private fun showMinFrameDialog() {
+        val minFrameView = EditText(context)
+        minFrameView.setText(animationView.minFrame.toInt().toString())
+        AlertDialog.Builder(context)
+                .setTitle(R.string.min_frame_dialog)
+                .setView(minFrameView)
+                .setPositiveButton("Load") { _, _ ->
+                    viewModel.setMinFrame(minFrameView.text.toString().toIntOrNull() ?: 0)
+                }
+                .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+                .show()
+    }
+
+    private fun showMaxFrameDialog() {
+        val maxFrameView = EditText(context)
+        maxFrameView.setText(animationView.maxFrame.toInt().toString())
+        AlertDialog.Builder(context)
+                .setTitle(R.string.max_frame_dialog)
+                .setView(maxFrameView)
+                .setPositiveButton("Load") { _, _ ->
+                    viewModel.setMaxFrame(maxFrameView.text.toString().toIntOrNull() ?: 0)
+                }
+                .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+                .show()
+    }
+
+    private fun View.animateVisible(visible: Boolean) {
+        beginDelayedTransition()
+        isVisible = visible
+    }
+
+    private fun invertColor(color: Int) {
+        val isDarkBg = color.isDark()
+        animationView.isActivated = isDarkBg
+        toolbar.isActivated = isDarkBg
+    }
+
+    private fun Int.isDark(): Boolean {
+        val y = (299 * Color.red(this) + 587 * Color.green(this) + 114 * Color.blue(this)) / 1000
+        return y < 128
     }
 
     override fun onDestroyView() {
@@ -284,30 +404,19 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
             android.R.id.home -> requireActivity().finish()
             R.id.info -> Unit
             R.id.visibility -> {
-                uiState.controls = !item.isChecked
-                uiState.controlBar = !item.isChecked
-                uiState.renderGraph = false
-                uiState.border = false
-                uiState.backgroundColor = false
-                uiState.scale = false
-                updateUiFromState()
-                val menuIcon = if (item.isChecked) R.drawable.ic_eye_teal else R.drawable.ic_eye_black
+                viewModel.setDistractionFree(item.isChecked)
+                val menuIcon = if (item.isChecked) R.drawable.ic_eye_teal else R.drawable.ic_eye_selector
                 item.icon = ContextCompat.getDrawable(requireContext(), menuIcon)
             }
         }
         return true
     }
 
-    override fun onCompositionLoaded(composition: LottieComposition?) {
-        if (this.composition != null) return
-
-        this.composition = composition
-        if (composition == null) {
-            Snackbar.make(coordinatorLayout, R.string.composition_load_error, Snackbar.LENGTH_LONG)
-            return
-        }
+    private fun onCompositionLoaded(composition: LottieComposition?) {
+        composition ?: return
 
         animationView.setComposition(composition)
+        hardwareAccelerationToggle.isActivated = animationView.layerType == View.LAYER_TYPE_HARDWARE
         animationView.setPerformanceTrackingEnabled(true)
         var renderTimeGraphRange = 4f
         animationView.performanceTracker?.addFrameListener { ms ->
@@ -318,47 +427,23 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
             renderTimesGraph.invalidate()
         }
 
-        // Force warning to update
-        warningsContainer.removeAllViews()
-        updateWarnings()
-    }
+        // Scale up to fill the screen
+        scaleSeekBar.progress = 100
 
-    private fun updateUiFromState() {
-        beginDelayedTransition()
+        keyPathsRecyclerView.buildModelsWith { controller ->
+            animationView.resolveKeyPath(KeyPath("**")).forEachIndexed { index, keyPath ->
+                BottomSheetItemViewModel_()
+                        .id(index)
+                        .text(keyPath.keysToString())
+                        .addTo(controller)
 
-        controlsContainer.isVisible = uiState.controls
-        controlBar.isVisible = uiState.controlBar
-
-        renderGraphToggle.isActivated = uiState.renderGraph
-        renderTimesGraphContainer.isVisible = uiState.renderGraph
-        renderTimesPerLayerButton.isVisible = uiState.renderGraph
-
-        borderToggle.isActivated = uiState.border
-        borderToggle.setImageResource(
-                if (uiState.border) R.drawable.ic_border_on
-                else R.drawable.ic_border_off
-        )
-        animationView.setBackgroundResource(if (borderToggle.isActivated) R.drawable.outline else 0)
-
-        backgroundColorToggle.isActivated = uiState.backgroundColor
-        backgroundColorContainer.isVisible = uiState.backgroundColor
-
-        scaleToggle.isActivated = uiState.scale
-        scaleContainer.isVisible = uiState.scale
-
-        hardwareAccelerationToggle.isActivated = animationView.useHardwareAcceleration
-        mergePathsToggle.isActivated = animationView.isMergePathsEnabledForKitKatAndAbove
-
-        speedToggle.isActivated = uiState.speed
-        speedContainer.isVisible = uiState.speed
-        speedButtonsContainer.children.forEach {
-            if (it is ControlBarItemToggleView) {
-                it.isActivated = it.getText().replace("x", "").toFloat() == animationView.speed
             }
         }
 
-        loopButton.isActivated = animationView.repeatCount == ValueAnimator.INFINITE
-        playButton.isActivated = animationView.isAnimating
+        updateWarnings()
+    }
+
+    override fun invalidate() {
     }
 
     private fun updateRenderTimesPerLayer() {
@@ -374,9 +459,12 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
         }
     }
 
-    private fun updateWarnings() {
-        val warnings = composition?.warnings ?: emptySet<String>()
-        if (!warnings.isEmpty() && warnings.size == warningsContainer.childCount) return
+    private fun updateWarnings() = withState(viewModel) { state ->
+        // Force warning to update
+        warningsContainer.removeAllViews()
+
+        val warnings = state.composition()?.warnings ?: emptySet<String>()
+        if (!warnings.isEmpty() && warnings.size == warningsContainer.childCount) return@withState
 
         warningsContainer.removeAllViews()
         warnings.forEach {
@@ -394,6 +482,18 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
         )
     }
 
+    private fun minScale() = 0.05f
+
+    private fun maxScale(): Float = withState(viewModel) { state ->
+        val screenWidth = resources.displayMetrics.widthPixels.toFloat()
+        val screenHeight = resources.displayMetrics.heightPixels.toFloat()
+        val bounds = state.composition()?.bounds
+        return@withState min(
+                screenWidth / (bounds?.width()?.toFloat() ?: screenWidth),
+                screenHeight / (bounds?.height()?.toFloat() ?: screenHeight)
+        )
+    }
+
     private fun beginDelayedTransition() = TransitionManager.beginDelayedTransition(container, transition)
 
     companion object {
@@ -406,5 +506,20 @@ class PlayerFragment : Fragment(), OnCompositionLoadedListener {
                 }
             }
         }
+    }
+
+    private fun updateFramesAndDurationLabel(animation: LottieAnimationView): String {
+        val currentFrame = animation.frame.toString()
+        val totalFrames = ("%.0f").format(animation.maxFrame)
+
+        val animationSpeed: Float = Math.abs(animation.speed)
+
+        val totalTime = ((animation.duration / animationSpeed) / 1000.0)
+        val totalTimeFormatted = ("%.1f").format(totalTime)
+
+        val progress = (totalTime / 100.0) * (Math.round(animation.progress * 100.0))
+        val progressFormatted = ("%.1f").format(progress)
+
+        return "$currentFrame/$totalFrames\n$progressFormatted/$totalTimeFormatted"
     }
 }

@@ -28,14 +28,16 @@ public class LayerParser {
     Rect bounds = composition.getBounds();
     return new Layer(
         Collections.<ContentModel>emptyList(), composition, "__container", -1,
-        Layer.LayerType.PreComp, -1, null, Collections.<Mask>emptyList(),
+        Layer.LayerType.PRE_COMP, -1, null, Collections.<Mask>emptyList(),
         new AnimatableTransform(), 0, 0, 0, 0, 0,
         bounds.width(), bounds.height(), null, null, Collections.<Keyframe<Float>>emptyList(),
-        Layer.MatteType.None, null);
+        Layer.MatteType.NONE, null, false);
   }
 
   public static Layer parse(JsonReader reader, LottieComposition composition) throws IOException {
-    String layerName = null;
+    // This should always be set by After Effects. However, if somebody wants to minify
+    // and optimize their json, the name isn't critical for most cases so it can be removed.
+    String layerName = "UNSET";
     Layer.LayerType layerType = null;
     String refId = null;
     long layerId = 0;
@@ -50,8 +52,9 @@ public class LayerParser {
     float inFrame = 0f;
     float outFrame = 0f;
     String cl = null;
+    boolean hidden = false;
 
-    Layer.MatteType matteType = Layer.MatteType.None;
+    Layer.MatteType matteType = Layer.MatteType.NONE;
     AnimatableTransform transform = null;
     AnimatableTextFrame text = null;
     AnimatableTextProperties textProperties = null;
@@ -74,10 +77,10 @@ public class LayerParser {
           break;
         case "ty":
           int layerTypeInt = reader.nextInt();
-          if (layerTypeInt < Layer.LayerType.Unknown.ordinal()) {
+          if (layerTypeInt < Layer.LayerType.UNKNOWN.ordinal()) {
             layerType = Layer.LayerType.values()[layerTypeInt];
           } else {
-            layerType = Layer.LayerType.Unknown;
+            layerType = Layer.LayerType.UNKNOWN;
           }
           break;
         case "parent":
@@ -97,12 +100,14 @@ public class LayerParser {
           break;
         case "tt":
           matteType = Layer.MatteType.values()[reader.nextInt()];
+          composition.incrementMatteOrMaskCount(1);
           break;
         case "masksProperties":
           reader.beginArray();
           while (reader.hasNext()) {
             masks.add(MaskParser.parse(reader, composition));
           }
+          composition.incrementMatteOrMaskCount(masks.size());
           reader.endArray();
           break;
         case "shapes":
@@ -184,6 +189,9 @@ public class LayerParser {
         case "cl":
           cl = reader.nextString();
           break;
+        case "hd":
+          hidden = reader.nextBoolean();
+          break;
         default:
           reader.skipValue();
       }
@@ -204,7 +212,7 @@ public class LayerParser {
     }
 
     // The + 1 is because the animation should be visible on the out frame itself.
-    outFrame = (outFrame > 0 ? outFrame : composition.getEndFrame()) + 1;
+    outFrame = (outFrame > 0 ? outFrame : composition.getEndFrame());
     Keyframe<Float> visibleKeyframe =
         new Keyframe<>(composition, 1f, 1f, null, inFrame, outFrame);
     inOutKeyframes.add(visibleKeyframe);
@@ -220,6 +228,6 @@ public class LayerParser {
     return new Layer(shapes, composition, layerName, layerId, layerType, parentId, refId,
         masks, transform, solidWidth, solidHeight, solidColor, timeStretch, startFrame,
         preCompWidth, preCompHeight, text, textProperties, inOutKeyframes, matteType,
-        timeRemapping);
+        timeRemapping, hidden);
   }
 }

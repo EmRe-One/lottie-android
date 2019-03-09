@@ -7,7 +7,7 @@ import android.graphics.PointF;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.support.v4.util.LongSparseArray;
+import androidx.collection.LongSparseArray;
 
 import com.airbnb.lottie.LottieDrawable;
 import com.airbnb.lottie.animation.keyframe.BaseKeyframeAnimation;
@@ -23,6 +23,7 @@ public class GradientStrokeContent extends BaseStrokeContent {
   private static final int CACHE_STEPS_MS = 32;
 
   private final String name;
+  private final boolean hidden;
   private final LongSparseArray<LinearGradient> linearGradientCache = new LongSparseArray<>();
   private final LongSparseArray<RadialGradient> radialGradientCache = new LongSparseArray<>();
   private final RectF boundsRect = new RectF();
@@ -36,11 +37,12 @@ public class GradientStrokeContent extends BaseStrokeContent {
   public GradientStrokeContent(
       final LottieDrawable lottieDrawable, BaseLayer layer, GradientStroke stroke) {
     super(lottieDrawable, layer, stroke.getCapType().toPaintCap(),
-        stroke.getJoinType().toPaintJoin(), stroke.getOpacity(), stroke.getWidth(),
-        stroke.getLineDashPattern(), stroke.getDashOffset());
+        stroke.getJoinType().toPaintJoin(), stroke.getMiterLimit(), stroke.getOpacity(),
+        stroke.getWidth(), stroke.getLineDashPattern(), stroke.getDashOffset());
 
     name = stroke.getName();
     type = stroke.getGradientType();
+    hidden = stroke.isHidden();
     cacheSteps = (int) (lottieDrawable.getComposition().getDuration() / CACHE_STEPS_MS);
 
     colorAnimation = stroke.getGradientColor().createAnimation();
@@ -57,8 +59,11 @@ public class GradientStrokeContent extends BaseStrokeContent {
   }
 
   @Override public void draw(Canvas canvas, Matrix parentMatrix, int parentAlpha) {
-    getBounds(boundsRect, parentMatrix);
-    if (type == GradientType.Linear) {
+    if (hidden) {
+      return;
+    }
+    getBounds(boundsRect, parentMatrix, false);
+    if (type == GradientType.LINEAR) {
       paint.setShader(getLinearGradient());
     } else {
       paint.setShader(getRadialGradient());

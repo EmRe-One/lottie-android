@@ -3,9 +3,9 @@ package com.airbnb.lottie.model.layer;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.RectF;
-import android.support.annotation.FloatRange;
-import android.support.annotation.Nullable;
-import android.support.v4.util.LongSparseArray;
+import androidx.annotation.FloatRange;
+import androidx.annotation.Nullable;
+import androidx.collection.LongSparseArray;
 
 import com.airbnb.lottie.L;
 import com.airbnb.lottie.LottieComposition;
@@ -60,8 +60,8 @@ public class CompositionLayer extends BaseLayer {
       } else {
         layers.add(0, layer);
         switch (lm.getMatteType()) {
-          case Add:
-          case Invert:
+          case ADD:
+          case INVERT:
             mattedLayer = layer;
             break;
         }
@@ -104,22 +104,12 @@ public class CompositionLayer extends BaseLayer {
     L.endSection("CompositionLayer#draw");
   }
 
-  @Override public void getBounds(RectF outBounds, Matrix parentMatrix) {
-    super.getBounds(outBounds, parentMatrix);
-    rect.set(0, 0, 0, 0);
+  @Override public void getBounds(RectF outBounds, Matrix parentMatrix, boolean applyParents) {
+    super.getBounds(outBounds, parentMatrix, applyParents);
     for (int i = layers.size() - 1; i >= 0; i--) {
-      BaseLayer content = layers.get(i);
-      content.getBounds(rect, boundsMatrix);
-      if (outBounds.isEmpty()) {
-        outBounds.set(rect);
-      } else {
-        outBounds.set(
-            Math.min(outBounds.left, rect.left),
-            Math.min(outBounds.top, rect.top),
-            Math.max(outBounds.right, rect.right),
-            Math.max(outBounds.bottom, rect.bottom)
-        );
-      }
+      rect.set(0, 0, 0, 0);
+      layers.get(i).getBounds(rect, boundsMatrix, true);
+      outBounds.union(rect);
     }
   }
 

@@ -31,6 +31,8 @@ class GradientStrokeParser {
     ShapeStroke.LineCapType capType = null;
     ShapeStroke.LineJoinType joinType = null;
     AnimatableFloatValue offset = null;
+    float miterLimit = 0f;
+    boolean hidden = false;
 
 
     List<AnimatableFloatValue> lineDashPattern = new ArrayList<>();
@@ -61,7 +63,7 @@ class GradientStrokeParser {
           opacity = AnimatableValueParser.parseInteger(reader, composition);
           break;
         case "t":
-          gradientType = reader.nextInt() == 1 ? GradientType.Linear : GradientType.Radial;
+          gradientType = reader.nextInt() == 1 ? GradientType.LINEAR : GradientType.RADIAL;
           break;
         case "s":
           startPoint = AnimatableValueParser.parsePoint(reader, composition);
@@ -77,6 +79,12 @@ class GradientStrokeParser {
           break;
         case "lj":
           joinType = ShapeStroke.LineJoinType.values()[reader.nextInt() - 1];
+          break;
+        case "ml":
+          miterLimit = (float) reader.nextDouble();
+          break;
+        case "hd":
+          hidden = reader.nextBoolean();
           break;
         case "d":
           reader.beginArray();
@@ -101,6 +109,7 @@ class GradientStrokeParser {
             if (n.equals("o")) {
               offset = val;
             } else if (n.equals("d") || n.equals("g")) {
+              composition.setHasDashPattern(true);
               lineDashPattern.add(val);
             }
           }
@@ -117,6 +126,6 @@ class GradientStrokeParser {
 
     return new GradientStroke(
         name, gradientType, color, opacity, startPoint, endPoint, width, capType, joinType,
-        lineDashPattern, offset);
+        miterLimit, lineDashPattern, offset, hidden);
   }
 }

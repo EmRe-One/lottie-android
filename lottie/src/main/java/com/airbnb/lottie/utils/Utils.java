@@ -1,14 +1,22 @@
 package com.airbnb.lottie.utils;
 
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PathMeasure;
 import android.graphics.PointF;
-import android.support.annotation.Nullable;
+import android.graphics.RectF;
+
+import androidx.annotation.Nullable;
 
 import com.airbnb.lottie.L;
+import com.airbnb.lottie.animation.LPaint;
 import com.airbnb.lottie.animation.content.TrimPathContent;
+import com.airbnb.lottie.animation.keyframe.FloatKeyframeAnimation;
 
 import java.io.Closeable;
 
@@ -22,13 +30,14 @@ public final class Utils {
   private static final float SQRT_2 = (float) Math.sqrt(2);
   private static float dpScale = -1;
 
-  private Utils() {}
+  private Utils() {
+  }
 
   public static Path createPath(PointF startPoint, PointF endPoint, PointF cp1, PointF cp2) {
     Path path = new Path();
     path.moveTo(startPoint.x, startPoint.y);
 
-    if (cp1 != null  && cp2 != null && (cp1.length() != 0 || cp2.length() != 0)) {
+    if (cp1 != null && cp2 != null && (cp1.length() != 0 || cp2.length() != 0)) {
       path.cubicTo(
           startPoint.x + cp1.x, startPoint.y + cp1.y,
           endPoint.x + cp2.x, endPoint.y + cp2.y,
@@ -65,11 +74,13 @@ public final class Utils {
   }
 
   public static void applyTrimPathIfNeeded(Path path, @Nullable TrimPathContent trimPath) {
-    if (trimPath == null) {
+    if (trimPath == null || trimPath.isHidden()) {
       return;
     }
-    applyTrimPathIfNeeded(path, trimPath.getStart().getValue() / 100f,
-        trimPath.getEnd().getValue() / 100f, trimPath.getOffset().getValue() / 360f);
+    float start = ((FloatKeyframeAnimation) trimPath.getStart()).getFloatValue();
+    float end = ((FloatKeyframeAnimation) trimPath.getEnd()).getFloatValue();
+    float offset = ((FloatKeyframeAnimation) trimPath.getOffset()).getFloatValue();
+    applyTrimPathIfNeeded(path, start / 100f, end / 100f, offset / 360f);
   }
 
   public static void applyTrimPathIfNeeded(
@@ -187,5 +198,20 @@ public final class Utils {
       dpScale = Resources.getSystem().getDisplayMetrics().density;
     }
     return dpScale;
+  }
+
+  /**
+   * For testing purposes only. DO NOT USE IN PRODUCTION.
+   */
+  public static Bitmap renderPath(Path path) {
+    RectF bounds = new RectF();
+    path.computeBounds(bounds, false);
+    Bitmap bitmap = Bitmap.createBitmap((int) bounds.right, (int) bounds.bottom, Bitmap.Config.ARGB_8888);
+    Canvas canvas = new Canvas(bitmap);
+    Paint paint = new LPaint();
+    paint.setAntiAlias(true);
+    paint.setColor(Color.BLUE);
+    canvas.drawPath(path, paint);
+    return bitmap;
   }
 }

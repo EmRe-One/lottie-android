@@ -7,8 +7,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.support.annotation.Nullable;
-
+import androidx.annotation.Nullable;
 import com.airbnb.lottie.LottieComposition;
 import com.airbnb.lottie.LottieDrawable;
 import com.airbnb.lottie.LottieProperty;
@@ -17,14 +16,15 @@ import com.airbnb.lottie.animation.content.ContentGroup;
 import com.airbnb.lottie.animation.keyframe.BaseKeyframeAnimation;
 import com.airbnb.lottie.animation.keyframe.TextKeyframeAnimation;
 import com.airbnb.lottie.model.DocumentData;
+import com.airbnb.lottie.model.DocumentData.Justification;
 import com.airbnb.lottie.model.Font;
 import com.airbnb.lottie.model.FontCharacter;
 import com.airbnb.lottie.model.animatable.AnimatableTextProperties;
 import com.airbnb.lottie.model.content.ShapeGroup;
 import com.airbnb.lottie.utils.Utils;
 import com.airbnb.lottie.value.LottieValueCallback;
-
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,7 +64,6 @@ public class TextLayer extends BaseLayer {
       addAnimation(colorAnimation);
     }
 
-
     if (textProperties != null && textProperties.stroke != null) {
       strokeColorAnimation = textProperties.stroke.createAnimation();
       strokeColorAnimation.addUpdateListener(this);
@@ -82,6 +81,12 @@ public class TextLayer extends BaseLayer {
       trackingAnimation.addUpdateListener(this);
       addAnimation(trackingAnimation);
     }
+  }
+
+  @Override public void getBounds(RectF outBounds, Matrix parentMatrix, boolean applyParents) {
+    super.getBounds(outBounds, parentMatrix, applyParents);
+    // TODO: use the correct text bounds.
+    outBounds.set(0, 0, composition.getBounds().width(), composition.getBounds().height());
   }
 
   @Override void drawLayer(Canvas canvas, Matrix parentMatrix, int parentAlpha) {
@@ -108,7 +113,8 @@ public class TextLayer extends BaseLayer {
     } else {
       strokePaint.setColor(documentData.strokeColor);
     }
-    int alpha = transform.getOpacity().getValue() * 255 / 100;
+    int opacity = transform.getOpacity() == null ? 100 : transform.getOpacity().getValue();
+    int alpha = opacity * 255 / 100;
     fillPaint.setAlpha(alpha);
     strokePaint.setAlpha(alpha);
 
@@ -116,7 +122,7 @@ public class TextLayer extends BaseLayer {
       strokePaint.setStrokeWidth(strokeWidthAnimation.getValue());
     } else {
       float parentScale = Utils.getScale(parentMatrix);
-      strokePaint.setStrokeWidth(documentData.strokeWidth * Utils.dpScale() * parentScale);
+      strokePaint.setStrokeWidth((float) (documentData.strokeWidth * Utils.dpScale() * parentScale));
     }
 
     if (lottieDrawable.useTextGlyphs()) {
@@ -132,9 +138,40 @@ public class TextLayer extends BaseLayer {
       DocumentData documentData, Matrix parentMatrix, Font font, Canvas canvas) {
     float fontScale = (float) documentData.size / 100f;
     float parentScale = Utils.getScale(parentMatrix);
+
     String text = documentData.text;
 
+    // Line height
+    float lineHeight = (float) documentData.lineHeight * Utils.dpScale();
 
+    // Split full text in multiple lines
+    List<String> textLines = getTextLines(text);
+    int textLineCount = textLines.size();
+    for (int l = 0; l < textLineCount; l++) {
+
+      String textLine = textLines.get(l);
+      float textLineWidth = getTextLineWidthForGlyphs(textLine, font, fontScale, parentScale);
+
+      canvas.save();
+
+      // Apply horizontal justification
+      applyJustification(documentData.justification, canvas, textLineWidth);
+
+      // Center text vertically
+      float multilineTranslateY = (textLineCount - 1) * lineHeight / 2;
+      float translateY = l * lineHeight - multilineTranslateY;
+      canvas.translate(0, translateY);
+
+      // Draw each line
+      drawGlyphTextLine(textLine, documentData, parentMatrix, font, canvas, parentScale, fontScale);
+
+      // Reset canvas
+      canvas.restore();
+    }
+  }
+
+  private void drawGlyphTextLine(String text, DocumentData documentData, Matrix parentMatrix,
+                                 Font font, Canvas canvas, float parentScale, float fontScale) {
     for (int i = 0; i < text.length(); i++) {
       char c = text.charAt(i);
       int characterHash = FontCharacter.hashFor(c, font.getFamily(), font.getStyle());
@@ -171,6 +208,43 @@ public class TextLayer extends BaseLayer {
     fillPaint.setTextSize((float) (documentData.size * Utils.dpScale()));
     strokePaint.setTypeface(fillPaint.getTypeface());
     strokePaint.setTextSize(fillPaint.getTextSize());
+
+    // Line height
+    float lineHeight = (float) documentData.lineHeight * Utils.dpScale();
+
+    // Split full text in multiple lines
+    List<String> textLines = getTextLines(text);
+    int textLineCount = textLines.size();
+    for (int l = 0; l < textLineCount; l++) {
+
+      String textLine = textLines.get(l);
+      float textLineWidth = strokePaint.measureText(textLine);
+
+      // Apply horizontal justification
+      applyJustification(documentData.justification, canvas, textLineWidth);
+
+      // Center text vertically
+      float multilineTranslateY = (textLineCount - 1) * lineHeight / 2;
+      float translateY = l * lineHeight - multilineTranslateY;
+      canvas.translate(0, translateY);
+
+      // Draw each line
+      drawFontTextLine(textLine, documentData, canvas, parentScale);
+
+      // Reset canvas
+      canvas.setMatrix(parentMatrix);
+    }
+  }
+
+  private List<String> getTextLines(String text) {
+    // Split full text by carriage return character
+    String formattedText = text.replaceAll("\r\n", "\r")
+        .replaceAll("\n", "\r");
+    String[] textLinesArray = formattedText.split("\r");
+    return Arrays.asList(textLinesArray);
+  }
+
+  private void drawFontTextLine(String text, DocumentData documentData, Canvas canvas, float parentScale) {
     for (int i = 0; i < text.length(); i++) {
       char character = text.charAt(i);
       drawCharacterFromFont(character, documentData, canvas);
@@ -183,6 +257,35 @@ public class TextLayer extends BaseLayer {
       }
       float tx = charWidth + tracking * parentScale;
       canvas.translate(tx, 0);
+    }
+  }
+
+  private float getTextLineWidthForGlyphs(
+      String textLine, Font font, float fontScale, float parentScale) {
+    float textLineWidth = 0;
+    for (int i = 0; i < textLine.length(); i++) {
+      char c = textLine.charAt(i);
+      int characterHash = FontCharacter.hashFor(c, font.getFamily(), font.getStyle());
+      FontCharacter character = composition.getCharacters().get(characterHash);
+      if (character == null) {
+        continue;
+      }
+      textLineWidth += character.getWidth() * fontScale * Utils.dpScale() * parentScale;
+    }
+    return textLineWidth;
+  }
+
+  private void applyJustification(Justification justification, Canvas canvas, float textLineWidth) {
+    switch (justification) {
+      case LEFT_ALIGN:
+        // Do nothing. Default is left aligned.
+        break;
+      case RIGHT_ALIGN:
+        canvas.translate(-textLineWidth, 0);
+        break;
+      case CENTER:
+        canvas.translate(-textLineWidth / 2, 0);
+        break;
     }
   }
 

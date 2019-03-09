@@ -3,16 +3,16 @@ package com.airbnb.lottie.animation.content;
 import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.RectF;
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 
 import com.airbnb.lottie.LottieDrawable;
 import com.airbnb.lottie.animation.keyframe.BaseKeyframeAnimation;
+import com.airbnb.lottie.animation.keyframe.FloatKeyframeAnimation;
 import com.airbnb.lottie.model.KeyPath;
 import com.airbnb.lottie.model.content.RectangleShape;
 import com.airbnb.lottie.model.content.ShapeTrimPath;
 import com.airbnb.lottie.model.layer.BaseLayer;
 import com.airbnb.lottie.utils.MiscUtils;
-import com.airbnb.lottie.utils.Utils;
 import com.airbnb.lottie.value.LottieValueCallback;
 
 import java.util.List;
@@ -23,16 +23,18 @@ public class RectangleContent
   private final RectF rect = new RectF();
 
   private final String name;
+  private final boolean hidden;
   private final LottieDrawable lottieDrawable;
   private final BaseKeyframeAnimation<?, PointF> positionAnimation;
   private final BaseKeyframeAnimation<?, PointF> sizeAnimation;
   private final BaseKeyframeAnimation<?, Float> cornerRadiusAnimation;
 
-  @Nullable private TrimPathContent trimPath;
+  private CompoundTrimPathContent trimPaths = new CompoundTrimPathContent();
   private boolean isPathValid;
 
   public RectangleContent(LottieDrawable lottieDrawable, BaseLayer layer, RectangleShape rectShape) {
     name = rectShape.getName();
+    hidden = rectShape.isHidden();
     this.lottieDrawable = lottieDrawable;
     positionAnimation = rectShape.getPosition().createAnimation();
     sizeAnimation = rectShape.getSize().createAnimation();
@@ -64,8 +66,9 @@ public class RectangleContent
     for (int i = 0; i < contentsBefore.size(); i++) {
       Content content = contentsBefore.get(i);
       if (content instanceof TrimPathContent &&
-          ((TrimPathContent) content).getType() == ShapeTrimPath.Type.Simultaneously) {
-        trimPath = (TrimPathContent) content;
+          ((TrimPathContent) content).getType() == ShapeTrimPath.Type.SIMULTANEOUSLY) {
+        TrimPathContent trimPath = (TrimPathContent) content;
+        trimPaths.addTrimPath(trimPath);
         trimPath.addListener(this);
       }
     }
@@ -78,10 +81,16 @@ public class RectangleContent
 
     path.reset();
 
+    if (hidden) {
+      isPathValid = true;
+      return path;
+    }
+
     PointF size = sizeAnimation.getValue();
     float halfWidth = size.x / 2f;
     float halfHeight = size.y / 2f;
-    float radius = cornerRadiusAnimation == null ? 0f : cornerRadiusAnimation.getValue();
+    float radius = cornerRadiusAnimation == null ?
+            0f : ((FloatKeyframeAnimation) cornerRadiusAnimation).getFloatValue();
     float maxRadius = Math.min(halfWidth, halfHeight);
     if (radius > maxRadius) {
       radius = maxRadius;
@@ -133,7 +142,7 @@ public class RectangleContent
     }
     path.close();
 
-    Utils.applyTrimPathIfNeeded(path, trimPath);
+    trimPaths.apply(path);
 
     isPathValid = true;
     return path;

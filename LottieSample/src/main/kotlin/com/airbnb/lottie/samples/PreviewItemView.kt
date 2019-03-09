@@ -1,13 +1,17 @@
 package com.airbnb.lottie.samples
 
 import android.content.Context
-import android.support.annotation.DrawableRes
+import androidx.annotation.DrawableRes
 import android.util.AttributeSet
-import android.util.TypedValue
-import android.widget.ImageView
+import android.view.View
 import android.widget.LinearLayout
+import com.airbnb.epoxy.CallbackProp
+import com.airbnb.epoxy.ModelProp
+import com.airbnb.epoxy.ModelView
+import com.airbnb.epoxy.TextProp
 import kotlinx.android.synthetic.main.list_item_preview.view.*
 
+@ModelView(autoLayout = ModelView.Size.MATCH_WIDTH_WRAP_HEIGHT)
 class PreviewItemView @JvmOverloads constructor(
         context: Context,
         attrs: AttributeSet? = null,
@@ -17,26 +21,20 @@ class PreviewItemView @JvmOverloads constructor(
     init {
         orientation = VERTICAL
         inflate(R.layout.list_item_preview)
-
-        attrs?.let {
-            val typedArray = context.obtainStyledAttributes(it, R.styleable.PreviewItemView, 0, 0)
-            val titleText = resources.getText(typedArray.getResourceId(R.styleable.PreviewItemView_titleText, 0))
-            val actionText = resources.getText(typedArray.getResourceId(R.styleable.PreviewItemView_actionText, 0))
-
-            title.text = titleText
-            action.text = actionText
-
-            typedArray.recycle()
-        }
-
-        val outValue = TypedValue()
-        getContext().theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
-        setBackgroundResource(outValue.resourceId)
     }
 
-    fun addIcon(@DrawableRes drawableRes: Int) {
-        val imageView = ImageView(context)
-        imageView.setImageResource(drawableRes)
-        icons.addView(imageView)
+    @TextProp
+    fun setTitle(title: CharSequence) {
+        titleView.text = title
+    }
+
+    @ModelProp
+    fun setIcon(@DrawableRes icon: Int) {
+        iconView.setImageResource(icon)
+    }
+
+    @CallbackProp
+    fun setClickListener(clickListener: View.OnClickListener?) {
+        container.setOnClickListener(clickListener)
     }
 }

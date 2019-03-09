@@ -1,6 +1,6 @@
 package com.airbnb.lottie.parser;
 
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 import android.util.JsonReader;
 import android.util.Log;
 
@@ -20,12 +20,21 @@ class ContentModelParser {
     String type = null;
 
     reader.beginObject();
+    // Unfortunately, for an ellipse, d is before "ty" which means that it will get parsed
+    // before we are in the ellipse parser.
+    // "d" is 2 for normal and 3 for reversed.
+    int d = 2;
+    typeLoop:
     while (reader.hasNext()) {
-      if (reader.nextName().equals("ty")) {
-        type = reader.nextString();
-        break;
-      } else {
-        reader.skipValue();
+      switch (reader.nextName()) {
+        case "ty":
+          type = reader.nextString();
+          break typeLoop;
+        case "d":
+          d = reader.nextInt();
+          break;
+        default:
+          reader.skipValue();
       }
     }
 
@@ -57,7 +66,7 @@ class ContentModelParser {
         model = ShapePathParser.parse(reader, composition);
         break;
       case "el":
-        model = CircleShapeParser.parse(reader, composition);
+        model = CircleShapeParser.parse(reader, composition, d);
         break;
       case "rc":
         model = RectangleShapeParser.parse(reader, composition);
@@ -70,6 +79,9 @@ class ContentModelParser {
         break;
       case "mm":
         model = MergePathsParser.parse(reader);
+        composition.addWarning("Animation contains merge paths. Merge paths are only " +
+            "supported on KitKat+ and must be manually enabled by calling " +
+            "enableMergePathsForKitKatAndAbove().");
         break;
       case "rp":
         model = RepeaterParser.parse(reader, composition);

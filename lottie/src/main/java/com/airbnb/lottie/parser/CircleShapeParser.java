@@ -15,11 +15,12 @@ class CircleShapeParser {
   private CircleShapeParser() {}
 
   static CircleShape parse(
-      JsonReader reader, LottieComposition composition) throws IOException {
+      JsonReader reader, LottieComposition composition, int d) throws IOException {
     String name = null;
     AnimatableValue<PointF, PointF> position = null;
     AnimatablePointValue size = null;
-    boolean reversed = false;
+    boolean reversed = d == 3;
+    boolean hidden = false;
 
     while (reader.hasNext()) {
       switch (reader.nextName()) {
@@ -32,6 +33,9 @@ class CircleShapeParser {
         case "s":
           size = AnimatableValueParser.parsePoint(reader, composition);
           break;
+        case "hd":
+          hidden = reader.nextBoolean();
+          break;
         case "d":
           // "d" is 2 for normal and 3 for reversed.
           reversed = reader.nextInt() == 3;
@@ -41,6 +45,6 @@ class CircleShapeParser {
       }
     }
 
-    return new CircleShape(name, position, size, reversed);
+    return new CircleShape(name, position, size, reversed, hidden);
   }
 }

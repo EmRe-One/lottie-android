@@ -20,6 +20,7 @@ class MaskParser {
     Mask.MaskMode maskMode = null;
     AnimatableShapeValue maskPath = null;
     AnimatableIntegerValue opacity = null;
+    boolean inverted = false;
 
     reader.beginObject();
     while (reader.hasNext()) {
@@ -28,17 +29,19 @@ class MaskParser {
         case "mode":
           switch (reader.nextString()) {
             case "a":
-              maskMode = Mask.MaskMode.MaskModeAdd;
+              maskMode = Mask.MaskMode.MASK_MODE_ADD;
               break;
             case "s":
-              maskMode = Mask.MaskMode.MaskModeSubtract;
+              maskMode = Mask.MaskMode.MASK_MODE_SUBTRACT;
               break;
             case "i":
-              maskMode = Mask.MaskMode.MaskModeIntersect;
+              composition.addWarning(
+                  "Animation contains intersect masks. They are not supported but will be treated like add masks.");
+              maskMode = Mask.MaskMode.MASK_MODE_INTERSECT;
               break;
             default:
               Log.w(L.TAG, "Unknown mask mode " + mode + ". Defaulting to Add.");
-              maskMode = Mask.MaskMode.MaskModeAdd;
+              maskMode = Mask.MaskMode.MASK_MODE_ADD;
           }
           break;
         case "pt":
@@ -47,13 +50,16 @@ class MaskParser {
         case "o":
           opacity = AnimatableValueParser.parseInteger(reader, composition);
           break;
+        case "inv":
+          inverted = reader.nextBoolean();
+          break;
         default:
           reader.skipValue();
       }
     }
     reader.endObject();
 
-    return new Mask(maskMode, maskPath, opacity);
+    return new Mask(maskMode, maskPath, opacity, inverted);
   }
 
 }

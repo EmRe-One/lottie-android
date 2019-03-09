@@ -22,9 +22,7 @@
             app:text="@string/control_bar_render_graph" />
         <com.airbnb.lottie.samples.views.ControlBarItemToggleView
             android:id="@+id/warningsButton"
-            style="@style/ControlBarItem"
-            app:src="@drawable/ic_device"
-            app:text="@string/control_bar_no_warnings" />
+            style="@style/ControlBarItem" />
         <com.airbnb.lottie.samples.views.ControlBarItemToggleView
             android:id="@+id/borderToggle"
             style="@style/ControlBarItem"
@@ -36,6 +34,11 @@
             app:src="@drawable/ic_color"
             app:text="@string/control_bar_background_color" />
         <com.airbnb.lottie.samples.views.ControlBarItemToggleView
+            android:id="@+id/trimToggle"
+            style="@style/ControlBarItem"
+            app:src="@drawable/ic_content_cut"
+            app:text="@string/control_bar_trim" />
+        <com.airbnb.lottie.samples.views.ControlBarItemToggleView
             android:id="@+id/scaleToggle"
             style="@style/ControlBarItem"
             app:src="@drawable/ic_scale"
@@ -45,6 +48,11 @@
             style="@style/ControlBarItem"
             app:src="@drawable/ic_fast_forward"
             app:text="@string/control_bar_speed" />
+        <com.airbnb.lottie.samples.views.ControlBarItemToggleView
+            android:id="@+id/keyPathsToggle"
+            style="@style/ControlBarItem"
+            app:src="@drawable/ic_layers"
+            app:text="@string/control_bar_key_paths" />
         <com.airbnb.lottie.samples.views.ControlBarItemToggleView
             android:id="@+id/hardwareAccelerationToggle"
             style="@style/ControlBarItem"

@@ -1,9 +1,8 @@
 package com.airbnb.lottie.value;
 
 
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
-import android.support.annotation.RestrictTo;
+import androidx.annotation.Nullable;
+import androidx.annotation.RestrictTo;
 
 import com.airbnb.lottie.animation.keyframe.BaseKeyframeAnimation;
 
@@ -13,7 +12,7 @@ import com.airbnb.lottie.animation.keyframe.BaseKeyframeAnimation;
  */
 public class LottieValueCallback<T> {
   private final LottieFrameInfo<T> frameInfo = new LottieFrameInfo<>();
-  @Nullable BaseKeyframeAnimation<?, ?> animation;
+  @Nullable private BaseKeyframeAnimation<?, ?> animation;
 
   /**
    * This can be set with {@link #setValue(Object)} to use a value instead of deferring
@@ -24,29 +23,29 @@ public class LottieValueCallback<T> {
   public LottieValueCallback() {
   }
 
-  public LottieValueCallback(@NonNull T staticValue) {
+  public LottieValueCallback(@Nullable T staticValue) {
     value = staticValue;
   }
 
   /**
    * Override this if you haven't set a static value in the constructor or with setValue.
+   *
+   * Return null to resort to the default value.
    */
+  @Nullable
   public T getValue(LottieFrameInfo<T> frameInfo) {
-    if (value == null) {
-      throw new IllegalArgumentException("You must provide a static value in the constructor " +
-          ", call setValue, or override getValue.");
-    }
     return value;
   }
 
   public final void setValue(@Nullable T value) {
+    this.value = value;
     if (animation != null) {
-      this.value = value;
       animation.notifyListeners();
     }
   }
 
   @RestrictTo(RestrictTo.Scope.LIBRARY)
+  @Nullable
   public final T getValueInternal(
       float startFrame,
       float endFrame,
